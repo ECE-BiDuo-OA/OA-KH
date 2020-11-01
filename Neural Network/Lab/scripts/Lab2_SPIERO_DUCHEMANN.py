@@ -6,22 +6,41 @@ This is a temporary script file.
 """
 
 import numpy as np
+
+n_neurons_hidden = 10
+alpha1 = alpha2 = 0.1
+iteration_max = 500
+
+def find_label(G, labels):
+    I = len(G)
+    label = np.zeros((I,1))
+    for i in range(I):
+        label[i] = labels[np.argmax(G[i])]
     
-def ffnn(input_data, V, W):
-    X = input_data[:]
+    return label
+
+def getLabels(output_data):
+    I = len(output_data)
     
-    I = len(X)
+    labels = []
+    for i in range(I):
+        if output_data[i] not in labels:
+                labels.append(output_data[i])
     
-    X_ = np.hstack((np.ones((I,1)), X)) #I x N+1
-    X__ = X_.dot(V) # I x K
+    return labels
     
-    F = np.array([1/(1+np.exp(-x__)) for x__ in X__]) #I x K
-    F_ = np.hstack((np.ones((I,1)), F)) # I x (N+1)  
-    F__ = F_.dot(W) # I x J
+def normalize_output_data(output_data, labels):
+    I = len(output_data)
+    M = len(labels)
     
-    G = np.array([1/(1+np.exp(-x__)) for x__ in F__]) # I x J
+    Y = np.zeros((I,M))
+    for i in range(I):
+        for j in range(M):
+            if output_data[i] == labels[j]:
+                Y[i][j] = 1
+                break
     
-    return G, X_, F, F_
+    return Y
 
 def compute_error(G, Y, X, W):
     I = len(X)
@@ -35,16 +54,31 @@ def compute_error(G, Y, X, W):
     E = 1/2*E
     
     return E
+    
+def ffnn(input_data, V, W):
+    X = input_data[:]
+    
+    I = len(X)
+    
+    X_ = np.concatenate((np.ones((I,1)), X), axis=1) #I x N+1
+    X__ = X_.dot(V) # I x K
+    
+    F = np.array([1/(1+np.exp(-x__)) for x__ in X__]) #I x K
+    F_ = np.concatenate((np.ones((I,1)), F), axis=1) # I x (K+1)  
+    F__ = F_.dot(W) # I x J
+    
+    G = np.array([1/(1+np.exp(-x__)) for x__ in F__]) # I x J
+    
+    return G, F
 
-def fbnn(X, X_, Y, G, F, F_, V, W):
-    
-    alpha1 = 0.08
-    alpha2 = 0.08
-    
+def fbnn(X, Y, G, F, V, W):    
     N = len(X[0])+1
     I = len(X)
     K = len(V[0])+1
     J = len(W[0])
+    
+    X_ = np.concatenate((np.ones((I,1)), X), axis=1)
+    F_ = np.concatenate((np.ones((I,1)), F), axis=1)
     
     for k in range(K):
         for j in range(J):
@@ -65,54 +99,40 @@ def fbnn(X, X_, Y, G, F, F_, V, W):
     
     return V, W
 
-def train_nn(input_data, output_data, iteration):
-    
-    X = input_data[:]
-    Y = output_data[:]
-    
+def train_nn(X, Y, iteration):
     N = len(X[0])
-    K = 3
-    J = 1
+    J = len(Y[0])
     
-    V = np.zeros((N+1,K)) # N+1 x K
-    W = np.zeros((N+1,J)) # N+1 x J
+    V = np.random.rand(N+1,n_neurons_hidden) # N+1 x K
+    W = np.random.rand(n_neurons_hidden+1,J) # K+1 x J
 
     E = []
     for i in range(iteration):
-        G, X_, F, F_ = ffnn(X, V, W)
-        V, W = fbnn(X,X_,Y,G,F,F_,V,W)
-        E.append(compute_error(G, Y, X, W))
-        print(E[i])
-        
-    i_optimal = np.argmin(E)
-    
-    V = np.zeros((N+1,K)) # N+1 x K
-    W = np.zeros((N+1,J)) # N+1 x J
-    
-    E = []
-    for i in range(i_optimal+1):
-        G, X_, F, F_ = ffnn(X, V, W)
-        V, W = fbnn(X,X_,Y,G,F,F_,V,W)
+        G, F = ffnn(X, V, W)
+        V, W = fbnn(X, Y, G, F, V, W)
         E.append(compute_error(G, Y, X, W))
     
-    return V,W,E[i_optimal]
+    return V, W, E
     
 if __name__ == "__main__" :
+    
     file = open("../data_ffnn.txt", "r")
     dataset = np.loadtxt(file, delimiter="\t", skiprows=1)
     
-    X = dataset[:, 0:3]
-    Y = dataset[:, 3:4]
+    input_data = dataset[:, 0:3]
+    output_data = dataset[:, 3:4]
+    labels = getLabels(output_data)
     
-    norm_max = np.max(Y)
-    
-    Y = Y/norm_max
+    Y = normalize_output_data(output_data, labels)
     
     #Train the ANN
-    V,W,E = train_nn(X,Y,1000)
-    # print(V)
-    # print(W)
-    # print(E)
+    print("\nTraining with {} iterations and alpha1 = {}, alpha2 = {}".format(iteration_max, alpha1, alpha2))
+    V,W,E = train_nn(input_data, Y, iteration_max)
+    print("\nV =")
+    print(V)
+    print("\nW =")
+    print(W)
+    #print("Error = {}".format(E))
     
     # V = np.array([[ 0.86965597,  0.92171657,  0.57626106],
     #               [ 3.19111108,  2.30370477, -4.58865742],
@@ -123,18 +143,20 @@ if __name__ == "__main__" :
     #               [ 10.60326524],
     #               [ -4.9337514 ],
     #               [-10.76768206]])
-    
+
     #Comparing with data output
-    G, X_, F, F_ = ffnn(X, V, W)
-    E = compute_error(G, Y, X, W)
-    G = np.round(G*norm_max)
-    print(G)
+    print("\nComparing the predicted outputs with the actual outputs")
+    G, F = ffnn(input_data, V, W)
+    E = compute_error(G, Y, input_data, W)
+    print("Output =")
+    #print(find_label(G, labels))
     
-    X = np.array([[  2,   2,   -3],
-                  [  3,   4,    3],
-                  [4.5, 1.5,    0]])
+    print("\nPredicting outputs with new inputs")
+    input_data = np.array([[  2,   2,   -3],
+                           [  3,   4,    3],
+                           [4.5, 1.5,    0]])
     
-    G, X_, F, F_ = ffnn(X, V, W)
-    E = compute_error(G, Y, X, W)
-    G = np.round(G*norm_max)
-    print(G)
+    G, F = ffnn(input_data, V, W)
+    E = compute_error(G, Y, input_data, W)
+    print("Output =")
+    print(find_label(G, labels))
